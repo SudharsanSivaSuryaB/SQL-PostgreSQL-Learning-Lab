@@ -257,15 +257,69 @@ def navigate_to(destination, tab_label="Learn"):
         st.session_state["scroll_target"] = "session_cover"
         st.session_state["collapse_sidebar"] = True
 
+def handle_navigation_change():
+    """Open selected lessons at the cover on their Learn tab."""
+    destination = st.session_state.get("navigation")
+    destination_idx = next(
+        (i for i, session in enumerate(SESSIONS) if session["title"] == destination),
+        None,
+    )
+    if destination_idx is not None:
+        st.session_state[f"session_tabs_{destination_idx}"] = "Learn"
+        st.session_state["scroll_target"] = "session_cover"
+        st.session_state["collapse_sidebar"] = True
+
 def select_session_tab(tab_key, tab_label):
     """Switch lesson tabs from a callback before the tab widget is instantiated."""
     st.session_state[tab_key] = tab_label
     st.session_state["scroll_target"] = "session_tabs"
 
+def celebrate_correct_answer(widget_key, options, correct_index):
+    """Queue a celebration only when a newly selected answer is correct."""
+    selected = st.session_state.get(widget_key)
+    if selected is not None and options.index(selected) == correct_index:
+        st.session_state["party_popper_event"] = st.session_state.get("party_popper_event", 0) + 1
+
+def show_party_poppers():
+    event_id = st.session_state.get("party_popper_event", 0)
+    if event_id <= st.session_state.get("party_popper_rendered", 0):
+        return
+    st.session_state["party_popper_rendered"] = event_id
+    poppers = "".join(
+        f'<span style="--top:{top}%;--delay:{delay}s">{emoji}</span>'
+        for top, delay, emoji in [
+            (8, 0, "🎉"), (22, .08, "🎊"), (37, .16, "🎉"),
+            (53, .04, "🎊"), (68, .2, "🎉"), (82, .12, "🎊"),
+        ]
+    )
+    st.html(f"""
+        <div class="party-popper-overlay" aria-hidden="true">{poppers}</div>
+        <style>
+          .party-popper-overlay {{
+            position: fixed; inset: 0; overflow: hidden; pointer-events: none;
+            z-index: 999999;
+          }}
+          .party-popper-overlay span {{
+            position: absolute; left: -10vw; top: var(--top); font-size: 42px;
+            opacity: 0; animation: party-popper-fly 1.8s cubic-bezier(.2,.75,.25,1) var(--delay) both;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,.3));
+          }}
+          @keyframes party-popper-fly {{
+            0% {{ transform: translate3d(-5vw, 22vh, 0) rotate(-35deg) scale(.55); opacity: 0; }}
+            12% {{ opacity: 1; }}
+            100% {{ transform: translate3d(120vw, -22vh, 0) rotate(700deg) scale(1.15); opacity: 0; }}
+          }}
+          @media (prefers-reduced-motion: reduce) {{
+            .party-popper-overlay {{ display: none; }}
+          }}
+        </style>
+    """)
+
 page = st.sidebar.selectbox(
     "Go to",
     PAGES,
     key="navigation",
+    on_change=handle_navigation_change,
     label_visibility="collapsed",
     help="Choose a course section or lesson.",
 )
@@ -289,7 +343,11 @@ def show_quiz(session, prefix):
     answered = 0
     for i, (question, options, correct, explanation) in enumerate(session["quiz"]):
         key = f"{prefix}_q{i}"
-        choice = st.radio(question, options, key=key, index=None)
+        choice = st.radio(
+            question, options, key=key, index=None,
+            on_change=celebrate_correct_answer,
+            args=(key, options, correct),
+        )
         if choice is not None:
             answered += 1
             is_correct = options.index(choice) == correct
@@ -300,6 +358,7 @@ def show_quiz(session, prefix):
                 st.error("Not quite. " + explanation)
     if answered:
         st.info(f"Current score: {score}/{answered}. Try again after reviewing the explanations.")
+    show_party_poppers()
     return score, answered
 
 def show_session(session, idx):
@@ -337,14 +396,18 @@ def show_session(session, idx):
         st.html(
             f"""<script>
             setTimeout(() => {{
-                const sidebar = document.querySelector('[data-testid="stSidebar"]');
-                const collapseButton = document.querySelector('[data-testid="stSidebarCollapseButton"] button');
-                if ({str(collapse_sidebar).lower()} && sidebar?.getAttribute('aria-expanded') === 'true' && collapseButton) {{
-                    collapseButton.click();
+                if ({str(collapse_sidebar).lower()}) {{
+                    const sidebar = document.querySelector('[data-testid="stSidebar"]');
+                    const collapseButton = document.querySelector(
+                        '[data-testid="stSidebarCollapseButton"] button, button[data-testid="stSidebarCollapseButton"]'
+                    );
+                    if (sidebar?.getAttribute('aria-expanded') === 'true' && collapseButton) {{
+                        collapseButton.click();
+                    }}
                 }}
                 const target = document.querySelector('.st-key-{target_class}');
                 if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-            }}, 150);
+            }}, 350);
             </script>""",
             unsafe_allow_javascript=True,
         )
@@ -511,8 +574,14 @@ elif page == "Final Assessment":
     ]
     answers = []
     for i,(q,opts,correct) in enumerate(final_questions):
-        choice = st.radio(f"{i+1}. {q}",opts,key=f"final_{i}",index=None)
+        key = f"final_{i}"
+        choice = st.radio(
+            f"{i+1}. {q}", opts, key=key, index=None,
+            on_change=celebrate_correct_answer,
+            args=(key, opts, correct),
+        )
         answers.append(None if choice is None else opts.index(choice))
+    show_party_poppers()
     if st.button("Submit final assessment", type="primary"):
         answered = sum(x is not None for x in answers)
         score = sum(1 for i,x in enumerate(answers) if x == final_questions[i][2])
