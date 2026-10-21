@@ -401,7 +401,11 @@ def show_session(session, idx):
                     const collapseButton = document.querySelector(
                         '[data-testid="stSidebarCollapseButton"] button, button[data-testid="stSidebarCollapseButton"]'
                     );
-                    if (sidebar?.getAttribute('aria-expanded') === 'true' && collapseButton) {{
+                    const isExpanded = sidebar && (
+                        sidebar.getAttribute('aria-expanded') === 'true' ||
+                        sidebar.getAttribute('data-collapsed') === 'false'
+                    );
+                    if (isExpanded && collapseButton) {{
                         collapseButton.click();
                     }}
                 }}
