@@ -9,7 +9,7 @@ A Streamlit learning app organized into 8 sessions based on `SQL_PostgreSQL_Deta
 - Session-level knowledge checks with explanations
 - Flashcards
 - Final assessment with score feedback
-- Session completion tracking for the current browser session
+- Session-based progress tracking and completion gating
 - Download button for the original PDF when included
 
 ## Run locally
@@ -37,6 +37,10 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+### Progress storage
+
+No account or sign-in is required. Progress is held in Streamlit session state and lasts for the current browser session. It resets when that session ends.
+
 ## Deploy on Streamlit Community Cloud
 1. Create a GitHub repository.
 2. Upload `app.py`, `requirements.txt`, `README.md`, and the original PDF.
@@ -47,5 +51,5 @@ streamlit run app.py
 ## Notes
 - This version is an interactive learning platform, not a full SQL execution engine.
 - For actual PostgreSQL query execution, use an online PostgreSQL playground linked from the Resources page.
-- Progress is stored in Streamlit session state and is not a persistent learner profile. A production course can add a database-backed progress store, authentication, and instructor analytics.
+- Progress is temporary and is not shared between users or browser sessions.
 - Course content is based on the uploaded study guide; activities and assessment questions are learning aids.

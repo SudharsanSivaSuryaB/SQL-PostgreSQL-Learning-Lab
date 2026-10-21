@@ -1,5 +1,4 @@
 ﻿import streamlit as st
-import json
 import base64
 from pathlib import Path
 
@@ -23,9 +22,40 @@ st.markdown("""
 .lesson-card {padding: 1rem 1.1rem; border: 1px solid rgba(128,128,128,.28); border-radius: 14px; margin: .4rem 0;}
 .small-muted {opacity:.8; font-size:.9rem;}
 .stProgress > div > div > div > div {background-color: #2e8b78;}
+.st-key-course_home_nav {
+  position: relative;
+  top: 48px;
+  left: clamp(-108px, -6vw, -64px);
+  z-index: 5;
+}
+.st-key-session_cover_0,
+.st-key-session_cover_1,
+.st-key-session_cover_2,
+.st-key-session_cover_3,
+.st-key-session_cover_4,
+.st-key-session_cover_5,
+.st-key-session_cover_6,
+.st-key-session_cover_7 {
+  scroll-margin-top: 76px;
+}
+.st-key-session_cover_0 [data-testid="stImage"] img,
+.st-key-session_cover_1 [data-testid="stImage"] img,
+.st-key-session_cover_2 [data-testid="stImage"] img,
+.st-key-session_cover_3 [data-testid="stImage"] img,
+.st-key-session_cover_4 [data-testid="stImage"] img,
+.st-key-session_cover_5 [data-testid="stImage"] img,
+.st-key-session_cover_6 [data-testid="stImage"] img,
+.st-key-session_cover_7 [data-testid="stImage"] img {
+  width: 100% !important;
+  max-width: 100%;
+  height: max(200px, min(675px, calc(100vh - 160px)));
+  max-height: none;
+  object-fit: contain;
+  background-color: #0B1220;
+}
 .st-key-course_home_nav button {
-  width: 48px;
-  height: 48px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   font-size: 0;
   color: transparent;
@@ -210,11 +240,12 @@ def init_state():
 
 init_state()
 
-st.sidebar.title("🧠 SQL Learning Lab")
-st.sidebar.caption("SQL & PostgreSQL • 8-session course")
 PAGES = ["Course Home"] + [s["title"] for s in SESSIONS] + ["Flashcards", "Final Assessment", "Resources"]
 
-def navigate_to(destination):
+st.sidebar.title("🧠 SQL Learning Lab")
+st.sidebar.caption("SQL & PostgreSQL • 8-session course")
+
+def navigate_to(destination, tab_label="Learn"):
     """Update navigation from a widget callback, before its widget is created."""
     st.session_state["navigation"] = destination
     destination_idx = next(
@@ -222,8 +253,9 @@ def navigate_to(destination):
         None,
     )
     if destination_idx is not None:
-        st.session_state[f"session_tabs_{destination_idx}"] = "Learn"
+        st.session_state[f"session_tabs_{destination_idx}"] = tab_label
         st.session_state["scroll_target"] = "session_cover"
+        st.session_state["collapse_sidebar"] = True
 
 def select_session_tab(tab_key, tab_label):
     """Switch lesson tabs from a callback before the tab widget is instantiated."""
@@ -241,7 +273,7 @@ completed = set(st.session_state.completed)
 progress = len(completed) / len(SESSIONS)
 st.sidebar.progress(progress)
 st.sidebar.write(f"**Progress:** {len(completed)} / {len(SESSIONS)} sessions")
-st.sidebar.caption("Your progress is stored for this browser session. A hosted version can add persistent learner accounts later.")
+st.sidebar.caption("Progress lasts for this browser session.")
 if page != "Course Home":
     st.button(
         "⌂",
@@ -275,6 +307,11 @@ def show_session(session, idx):
         0: "session-1-fundamentals.png",
         1: "session-2-tables-data-types.png",
         2: "session-3-insert-select.png",
+        3: "session-4-filtering-sorting-limiting.png",
+        4: "session-5-update-delete-alter.png",
+        5: "session-6-aggregates-group-by.png",
+        6: "session-7-functions-transactions.png",
+        7: "session-8-integrated-assessment.png",
     }
     with st.container(key=f"session_cover_{idx}"):
         if idx in cover_images:
@@ -294,14 +331,20 @@ def show_session(session, idx):
         on_change="rerun",
     )
     scroll_target = st.session_state.pop("scroll_target", None)
-    if scroll_target:
+    collapse_sidebar = st.session_state.pop("collapse_sidebar", False)
+    if scroll_target or collapse_sidebar:
         target_class = f"session_cover_{idx}" if scroll_target == "session_cover" else tab_key
         st.html(
             f"""<script>
             setTimeout(() => {{
+                const sidebar = document.querySelector('[data-testid="stSidebar"]');
+                const collapseButton = document.querySelector('[data-testid="stSidebarCollapseButton"] button');
+                if ({str(collapse_sidebar).lower()} && sidebar?.getAttribute('aria-expanded') === 'true' && collapseButton) {{
+                    collapseButton.click();
+                }}
                 const target = document.querySelector('.st-key-{target_class}');
                 if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-            }}, 100);
+            }}, 150);
             </script>""",
             unsafe_allow_javascript=True,
         )
@@ -407,7 +450,7 @@ if page == "Course Home":
                 type="primary" if i == len(completed) else "secondary",
             )
     st.markdown("### Suggested study routine")
-    st.markdown("1. Read the explanation.\n2. Trace the SQL example line by line.\n3. Attempt the challenge without revealing the answer.\n4. Take the quiz and revisit any missed concept.\n5. Mark the session complete.")
+    st.markdown("1. Read the explanation.\n2. Trace the SQL example line by line.\n3. Attempt the challenge without revealing the answer.\n4. Take the quiz and revisit any missed concept.\n5. Once every quiz answer is correct, continue to the next session.")
     st.info("This version focuses on learning interactions. It does not execute arbitrary SQL inside the app; use the PostgreSQL playground in Resources for real query execution.")
 
 elif page in [s["title"] for s in SESSIONS]:
@@ -514,4 +557,5 @@ elif page == "Resources":
         st.download_button("Download original study guide PDF", data=pdf_path.read_bytes(), file_name=pdf_path.name, mime="application/pdf")
     st.markdown("### Deployment")
     st.markdown("The project includes `requirements.txt` and `README.md`. You can deploy it to Streamlit Community Cloud by connecting a GitHub repository containing these files.")
+
 
