@@ -1,5 +1,6 @@
-import streamlit as st
+﻿import streamlit as st
 import json
+import base64
 from pathlib import Path
 
 st.set_page_config(
@@ -8,6 +9,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+home_icon_data = base64.b64encode(
+    (Path(__file__).parent / "assets" / "home-icon.png").read_bytes()
+).decode("ascii")
 
 st.markdown("""
 <style>
@@ -18,8 +23,22 @@ st.markdown("""
 .lesson-card {padding: 1rem 1.1rem; border: 1px solid rgba(128,128,128,.28); border-radius: 14px; margin: .4rem 0;}
 .small-muted {opacity:.8; font-size:.9rem;}
 .stProgress > div > div > div > div {background-color: #2e8b78;}
+.st-key-course_home_nav button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  font-size: 0;
+  color: transparent;
+  background-color: transparent;
+  background-image: url("data:image/png;base64,__HOME_ICON__");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  border: 0;
+  box-shadow: none;
+}
 </style>
-""", unsafe_allow_html=True)
+""".replace("__HOME_ICON__", home_icon_data), unsafe_allow_html=True)
 
 SESSIONS = [
 {
@@ -193,12 +212,44 @@ init_state()
 
 st.sidebar.title("🧠 SQL Learning Lab")
 st.sidebar.caption("SQL & PostgreSQL • 8-session course")
-page = st.sidebar.radio("Navigate", ["Course Home"] + [s["title"] for s in SESSIONS] + ["Flashcards", "Final Assessment", "Resources"], key="navigation")
+PAGES = ["Course Home"] + [s["title"] for s in SESSIONS] + ["Flashcards", "Final Assessment", "Resources"]
+
+def navigate_to(destination):
+    """Update navigation from a widget callback, before its widget is created."""
+    st.session_state["navigation"] = destination
+    destination_idx = next(
+        (i for i, session in enumerate(SESSIONS) if session["title"] == destination),
+        None,
+    )
+    if destination_idx is not None:
+        st.session_state[f"session_tabs_{destination_idx}"] = "Learn"
+        st.session_state["scroll_target"] = "session_cover"
+
+def select_session_tab(tab_key, tab_label):
+    """Switch lesson tabs from a callback before the tab widget is instantiated."""
+    st.session_state[tab_key] = tab_label
+    st.session_state["scroll_target"] = "session_tabs"
+
+page = st.sidebar.selectbox(
+    "Go to",
+    PAGES,
+    key="navigation",
+    label_visibility="collapsed",
+    help="Choose a course section or lesson.",
+)
 completed = set(st.session_state.completed)
 progress = len(completed) / len(SESSIONS)
 st.sidebar.progress(progress)
 st.sidebar.write(f"**Progress:** {len(completed)} / {len(SESSIONS)} sessions")
 st.sidebar.caption("Your progress is stored for this browser session. A hosted version can add persistent learner accounts later.")
+if page != "Course Home":
+    st.button(
+        "⌂",
+        key="course_home_nav",
+        on_click=navigate_to,
+        args=("Course Home",),
+        help="Course Home",
+    )
 
 def show_quiz(session, prefix):
     st.subheader("🧩 Quick knowledge check")
@@ -217,23 +268,69 @@ def show_quiz(session, prefix):
                 st.error("Not quite. " + explanation)
     if answered:
         st.info(f"Current score: {score}/{answered}. Try again after reviewing the explanations.")
+    return score, answered
 
 def show_session(session, idx):
-    st.title(session["title"])
-    st.write(session["subtitle"])
-    st.caption(f"Session {idx+1} of {len(SESSIONS)} • Suggested time: 30–45 minutes")
-    st.subheader("🎯 Learning objectives")
-    for obj in session["objectives"]:
-        st.markdown(f"- {obj}")
-    tabs = st.tabs(["Learn", "Code example", "Challenge", "Quiz"])
+    cover_images = {
+        0: "session-1-fundamentals.png",
+        1: "session-2-tables-data-types.png",
+        2: "session-3-insert-select.png",
+    }
+    with st.container(key=f"session_cover_{idx}"):
+        if idx in cover_images:
+            cover_path = Path(__file__).parent / "assets" / cover_images[idx]
+            st.image(cover_path, use_container_width=True)
+        st.title(session["title"])
+        st.write(session["subtitle"])
+        st.caption(f"Session {idx+1} of {len(SESSIONS)} • Suggested time: 30–45 minutes")
+        st.subheader("🎯 Learning objectives")
+        for obj in session["objectives"]:
+            st.markdown(f"- {obj}")
+    tab_key = f"session_tabs_{idx}"
+    tabs = st.tabs(
+        ["Learn", "Code example", "Challenge", "Quiz"],
+        key=tab_key,
+        default="Learn",
+        on_change="rerun",
+    )
+    scroll_target = st.session_state.pop("scroll_target", None)
+    if scroll_target:
+        target_class = f"session_cover_{idx}" if scroll_target == "session_cover" else tab_key
+        st.html(
+            f"""<script>
+            setTimeout(() => {{
+                const target = document.querySelector('.st-key-{target_class}');
+                if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+            }}, 100);
+            </script>""",
+            unsafe_allow_javascript=True,
+        )
     with tabs[0]:
         for heading, body in session["sections"]:
             with st.expander(heading, expanded=True):
                 st.markdown(body)
+        _, next_col = st.columns([5, 1])
+        next_col.button(
+            "Next →",
+            key=f"tab_next_code_{idx}",
+            on_click=select_session_tab,
+            args=(tab_key, "Code example"),
+            type="primary",
+            use_container_width=True,
+        )
     with tabs[1]:
         st.markdown("Review the example and explain each clause before moving on.")
         st.code(session["example"], language="sql")
         st.button("Copying tip: select the code and use Ctrl+C", key=f"copytip{idx}", disabled=True)
+        _, next_col = st.columns([5, 1])
+        next_col.button(
+            "Next →",
+            key=f"tab_next_challenge_{idx}",
+            on_click=select_session_tab,
+            args=(tab_key, "Challenge"),
+            type="primary",
+            use_container_width=True,
+        )
     with tabs[2]:
         st.markdown(f"**Your task:** {session['challenge']}")
         response = st.text_area("Write your answer or SQL here", key=f"challenge_{idx}", height=120, placeholder="Try it yourself before revealing the solution...")
@@ -244,21 +341,43 @@ def show_session(session, idx):
             st.success("Suggested answer")
             st.code(session["answer"], language="sql" if "SELECT" in session["answer"] or "INSERT" in session["answer"] or "ROLLBACK" in session["answer"] else "text")
         st.caption("The suggested answer is one valid approach; wording or SQL may vary.")
+        _, next_col = st.columns([5, 1])
+        next_col.button(
+            "Next →",
+            key=f"tab_next_quiz_{idx}",
+            on_click=select_session_tab,
+            args=(tab_key, "Quiz"),
+            type="primary",
+            use_container_width=True,
+        )
     with tabs[3]:
-        show_quiz(session, f"session{idx}")
+        score, answered = show_quiz(session, f"session{idx}")
+        if answered == len(session["quiz"]) and score == len(session["quiz"]):
+            if idx not in st.session_state.completed:
+                st.session_state.completed.append(idx)
+                st.rerun()
+        is_done = idx in st.session_state.completed
+        previous_col, next_col = st.columns(2)
+        if idx > 0:
+            previous_col.button(
+                "← Previous session",
+                on_click=navigate_to,
+                args=(SESSIONS[idx-1]["title"],),
+                key=f"prev{idx}",
+                use_container_width=True,
+            )
+        if idx < len(SESSIONS)-1:
+            next_col.button(
+                "Next session →",
+                on_click=navigate_to,
+                args=(SESSIONS[idx+1]["title"],),
+                key=f"next{idx}",
+                disabled=not is_done,
+                type="primary" if is_done else "secondary",
+                help="Answer every quiz question correctly to unlock the next session." if not is_done else None,
+                use_container_width=True,
+            )
     st.divider()
-    is_done = idx in completed
-    if st.button("✅ Mark session complete" if not is_done else "↩️ Mark session incomplete", key=f"complete_{idx}", type="primary" if not is_done else "secondary"):
-        if is_done:
-            st.session_state.completed.remove(idx)
-        else:
-            st.session_state.completed.append(idx)
-        st.rerun()
-    c1, c2 = st.columns(2)
-    if idx > 0:
-        c1.button("← Previous session", on_click=lambda: st.session_state.update({"navigation": SESSIONS[idx-1]["title"]}), key=f"prev{idx}")
-    if idx < len(SESSIONS)-1:
-        c2.button("Next session →", on_click=lambda: st.session_state.update({"navigation": SESSIONS[idx+1]["title"]}), key=f"next{idx}")
 
 if page == "Course Home":
     st.markdown("""
@@ -280,9 +399,13 @@ if page == "Course Home":
             left.markdown(f"**{s['title']}**")
             left.caption(s["subtitle"])
             right.markdown("✅ Complete" if i in completed else "⬜ Not started")
-            if st.button("Open session", key=f"open_home_{i}"):
-                st.session_state["navigation"] = s["title"]
-                st.rerun()
+            st.button(
+                "Continue learning →" if i not in completed else "Review session →",
+                key=f"open_home_{i}",
+                on_click=navigate_to,
+                args=(s["title"],),
+                type="primary" if i == len(completed) else "secondary",
+            )
     st.markdown("### Suggested study routine")
     st.markdown("1. Read the explanation.\n2. Trace the SQL example line by line.\n3. Attempt the challenge without revealing the answer.\n4. Take the quiz and revisit any missed concept.\n5. Mark the session complete.")
     st.info("This version focuses on learning interactions. It does not execute arbitrary SQL inside the app; use the PostgreSQL playground in Resources for real query execution.")
@@ -354,6 +477,17 @@ elif page == "Final Assessment":
         if answered < len(final_questions):
             st.warning(f"You answered {answered} of {len(final_questions)} questions. Unanswered questions count as incorrect.")
         st.metric("Your score", f"{score}/{len(final_questions)}", f"{round(score/len(final_questions)*100)}%")
+        st.subheader("Answer review")
+        for i, (question, options, correct) in enumerate(final_questions):
+            selected = answers[i]
+            selected_text = options[selected] if selected is not None else "No answer selected"
+            correct_text = options[correct]
+            st.markdown(f"**{i+1}. {question}**")
+            st.write(f"Your answer: {selected_text}")
+            if selected == correct:
+                st.success(f"Correct answer: {correct_text}")
+            else:
+                st.error(f"Correct answer: {correct_text}")
         if score >= 10:
             st.success("Excellent work! Review the sessions where you were unsure.")
         elif score >= 7:
